@@ -28,7 +28,7 @@ class Data(View):
         #     }
         #     gr_list.append(gr_dict)
 
-        gi_raw_list = GameInfo.objects.all().order_by('-dt')
+        gi_raw_list = GameInfo.objects.all().order_by('-dt', '-pk')
         gr_list = []
         for gi in gi_raw_list:
             gr = GameResult.objects.filter(game=gi).order_by('rank')
