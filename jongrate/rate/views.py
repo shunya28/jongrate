@@ -38,8 +38,9 @@ class Data(View):
             }
 
             for i in range(len(gr)):
-                gr_dict[f'rank{i+1}'] = gr[i].player.name + '：' + str(gr[i].score)
-            
+                gr_dict[f'rank{i+1}'] = gr[i].player.name + \
+                    '：' + str(gr[i].score)
+
             gr_list.append(gr_dict)
 
         context = {
@@ -72,8 +73,15 @@ class Data(View):
 
 class Rate(View):
     def get(self, request):
-        context = {}
+
+        graph_data = {}
+        context = {
+            'graph_data': graph_data
+        }
         return render(request, 'rate/rate.html', context)
+
+    def mori_calc_rate(cls, rank_list):
+        pass
 
 
 class Settings(View):
