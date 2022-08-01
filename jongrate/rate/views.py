@@ -74,14 +74,85 @@ class Data(View):
 class Rate(View):
     def get(self, request):
 
+        rate_list = self.mori_calc_rate()
         graph_data = {}
         context = {
             'graph_data': graph_data
         }
         return render(request, 'rate/rate.html', context)
 
-    def mori_calc_rate(cls, rank_list):
-        pass
+    def mori_calc_rate(self):
+
+        player_list = [p.name for p in Player.objects.all()]
+
+        # 順位表の初期化
+        # 順位表は2次元配列で、各行が各プレイヤーの順位履歴に対応する
+        # 行のインデックスとplayer_listのインデックスは対応する
+        rank_list = []
+        for _ in range(len(player_list)):
+            rank_list.append([])
+
+        info_list = GameInfo.objects.all().order_by('dt', 'pk')
+        for info in info_list:
+
+            # ある対局での4人の対局結果情報を取得する
+            res_list = GameResult.objects.filter(game=info)
+
+            # player_listをres_listの名前と順に照らし合わせ、対局の参加者を探す
+            # 参加した人のところには順位を、参加していない人のところには0を
+            # 順位表に追加する
+            for p_idx in range(len(player_list)):
+                did_name_match = False
+                for res_idx in range(len(res_list)):
+                    if player_list[p_idx] == res_list[res_idx].player.name:
+                        rank_list[p_idx].append(res_list[res_idx].rank)
+                        did_name_match = True
+                        break
+
+                if not did_name_match:
+                    rank_list[p_idx].append(0)
+
+        # レート表の初期化。構造は順位表と同じ
+        # レートの初期値は1000
+        rate_list = [[1000]] * len(player_list)
+
+        for game_num in range(len(rank_list[0])):
+
+            for p1 in range(len(player_list)):
+
+                # この局(game_num)に参加していないプレイヤーのレートは変動しない
+                if rank_list[p1][game_num] == 0:
+                    rank_list[p1].append(rank_list[p1][game_num])
+                    continue
+
+                # 上の処理を全員に対して行うためにわざと1回多くループを回してる
+                # このbreakが無いと、下のforで配列外参照が起きる
+                if p1 == (len(player_list) - 1):
+                    break
+
+                for p2 in range(p1 + 1, len(player_list)):
+
+                    if rank_list[p2][game_num] == 0:
+                        continue
+
+                    p1_rate = rate_list[p1][-1]
+                    p2_rate = rate_list[p2][-1]
+
+                    w = p2_rate / p1_rate
+                    w = 2 if w > 2 else w
+                    w = 0.5 if w < 0.5 else w
+
+                    new_p1_rate = p1_rate + int(30 * w)
+                    new_p2_rate = p2_rate - int(30 * w)
+
+                    if rank_list[p1][game_num] < rank_list[p2][game_num]:
+                        new_p1_rate = p1_rate - int(30 * w)
+                        new_p2_rate = p2_rate + int(30 * w)
+
+                    rate_list[p1].append(new_p1_rate)
+                    rate_list[p2].append(new_p2_rate)
+
+        return rate_list
 
 
 class Settings(View):
