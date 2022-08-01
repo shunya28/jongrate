@@ -3,7 +3,7 @@ from django.urls import reverse
 from django.views import View
 from django.conf import settings
 # from django.utils.timezone import make_aware
-import datetime
+import datetime, copy
 from pytz import timezone
 from rate.models import Player, GameInfo, GameResult, GameMode
 
@@ -75,7 +75,25 @@ class Rate(View):
     def get(self, request):
 
         rate_list = self.mori_calc_rate()
-        graph_data = {}
+        player_list = [p.name for p in Player.objects.all()]
+
+        labels = [''] * len(rate_list[0])
+        datasets = []
+        for i in range(len(player_list)):
+            color = 'rgb(255, 99, 132)'
+            data = {
+                'label': player_list[i],
+                'backgroundColor': color,
+                'borderColor': color,
+                'data': rate_list[i]
+            }
+            datasets.append(data)
+
+        graph_data = {
+            'labels': labels,
+            'datasets': datasets
+        }
+
         context = {
             'graph_data': graph_data
         }
@@ -114,16 +132,31 @@ class Rate(View):
 
         # レート表の初期化。構造は順位表と同じ
         # レートの初期値は1000
-        rate_list = [[1000]] * len(player_list)
+        rate_list = []
+        for _ in range(len(player_list)):
+            rate_list.append([1000])
 
         for game_num in range(len(rank_list[0])):
 
             for p1 in range(len(player_list)):
+                # print(p1)
+                # print('rate_list')
+                # print(rate_list)
+                # print('')
 
                 # この局(game_num)に参加していないプレイヤーのレートは変動しない
                 if rank_list[p1][game_num] == 0:
-                    rank_list[p1].append(rank_list[p1][game_num])
+                    # print(p1)
+                    # print(rate_list)
+                    prev_rate = rate_list[p1][game_num]
+                    rate_list[p1].append(copy.deepcopy(prev_rate))
+                    # print(rate_list[p1])
+                    # print('')
                     continue
+
+                print('rate_list (if suru-)')
+                print(rate_list)
+                print('')
 
                 # 上の処理を全員に対して行うためにわざと1回多くループを回してる
                 # このbreakが無いと、下のforで配列外参照が起きる
@@ -152,6 +185,7 @@ class Rate(View):
                     rate_list[p1].append(new_p1_rate)
                     rate_list[p2].append(new_p2_rate)
 
+        # print(rate_list)
         return rate_list
 
 
