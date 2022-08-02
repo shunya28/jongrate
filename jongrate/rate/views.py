@@ -3,7 +3,11 @@ from django.urls import reverse
 from django.views import View
 from django.conf import settings
 # from django.utils.timezone import make_aware
-import datetime, copy
+import datetime
+import copy
+import math
+import pandas as pd
+# from pandas.errors import ValueError
 from pytz import timezone
 from rate.models import Player, GameInfo, GameResult, GameMode
 
@@ -104,89 +108,86 @@ class Rate(View):
         player_list = [p.name for p in Player.objects.all()]
 
         # 順位表の初期化
-        # 順位表は2次元配列で、各行が各プレイヤーの順位履歴に対応する
-        # 行のインデックスとplayer_listのインデックスは対応する
-        rank_list = []
-        for _ in range(len(player_list)):
-            rank_list.append([])
+        rank_df = pd.DataFrame(columns=player_list)
 
         info_list = GameInfo.objects.all().order_by('dt', 'pk')
         for info in info_list:
 
             # ある対局での4人の対局結果情報を取得する
             res_list = GameResult.objects.filter(game=info)
+            res_player = [res.player.name for res in res_list]
+            res_rank = [res.rank for res in res_list]
 
-            # player_listをres_listの名前と順に照らし合わせ、対局の参加者を探す
-            # 参加した人のところには順位を、参加していない人のところには0を
-            # 順位表に追加する
-            for p_idx in range(len(player_list)):
-                did_name_match = False
-                for res_idx in range(len(res_list)):
-                    if player_list[p_idx] == res_list[res_idx].player.name:
-                        rank_list[p_idx].append(res_list[res_idx].rank)
-                        did_name_match = True
-                        break
+            s = pd.DataFrame([res_rank], columns=res_player)
+            rank_df = pd.concat([rank_df, s], ignore_index=True)
 
-                if not did_name_match:
-                    rank_list[p_idx].append(0)
-
-        # レート表の初期化。構造は順位表と同じ
+        # レート表の初期化
         # レートの初期値は1000
-        rate_list = []
-        for _ in range(len(player_list)):
-            rate_list.append([1000])
+        rate_df = pd.DataFrame(index=[0], columns=player_list)
+        rate_df.fillna(1000, inplace=True)
 
-        for game_num in range(len(rank_list[0])):
+        # 高速化のために辞書型に変換
+        rank_dict = rank_df.to_dict('records')
 
-            for p1 in range(len(player_list)):
-                # print(p1)
-                # print('rate_list')
-                # print(rate_list)
-                # print('')
-
-                # この局(game_num)に参加していないプレイヤーのレートは変動しない
-                if rank_list[p1][game_num] == 0:
-                    # print(p1)
-                    # print(rate_list)
-                    prev_rate = rate_list[p1][game_num]
-                    rate_list[p1].append(copy.deepcopy(prev_rate))
-                    # print(rate_list[p1])
-                    # print('')
-                    continue
-
-                print('rate_list (if suru-)')
-                print(rate_list)
-                print('')
-
-                # 上の処理を全員に対して行うためにわざと1回多くループを回してる
-                # このbreakが無いと、下のforで配列外参照が起きる
-                if p1 == (len(player_list) - 1):
-                    break
-
-                for p2 in range(p1 + 1, len(player_list)):
-
-                    if rank_list[p2][game_num] == 0:
+        for rank in rank_dict:
+            rate = [''] * len(player_list)
+            for i, k1 in enumerate(rank):
+                for j, k2 in enumerate(rank):
+                    if i >= j or math.isnan(rank[k1]) or math.isnan(rank[k2]):
                         continue
 
-                    p1_rate = rate_list[p1][-1]
-                    p2_rate = rate_list[p2][-1]
+        # for game_num in range(len(rank_list[0])):
 
-                    w = p2_rate / p1_rate
-                    w = 2 if w > 2 else w
-                    w = 0.5 if w < 0.5 else w
+        #     for p1 in range(len(player_list)):
+        #         # print(p1)
+        #         # print('rate_list')
+        #         # print(rate_list)
+        #         # print('')
 
-                    new_p1_rate = p1_rate + int(30 * w)
-                    new_p2_rate = p2_rate - int(30 * w)
+        #         # この局(game_num)に参加していないプレイヤーのレートは変動しない
+        #         if rank_list[p1][game_num] == 0:
+        #             # print(p1)
+        #             # print(rate_list)
+        #             prev_rate = rate_list[p1][game_num]
+        #             rate_list[p1].append(copy.deepcopy(prev_rate))
+        #             # print(rate_list[p1])
+        #             # print('')
+        #             continue
 
-                    if rank_list[p1][game_num] < rank_list[p2][game_num]:
-                        new_p1_rate = p1_rate - int(30 * w)
-                        new_p2_rate = p2_rate + int(30 * w)
+        #         print('rate_list (if suru-)')
+        #         print(rate_list)
+        #         print('')
 
-                    rate_list[p1].append(new_p1_rate)
-                    rate_list[p2].append(new_p2_rate)
+        #         # 上の処理を全員に対して行うためにわざと1回多くループを回してる
+        #         # このbreakが無いと、下のforで配列外参照が起きる
+        #         if p1 == (len(player_list) - 1):
+        #             break
+
+        #         for p2 in range(p1 + 1, len(player_list)):
+
+        #             if rank_list[p2][game_num] == 0:
+        #                 continue
+
+        #             p1_rate = rate_list[p1][-1]
+        #             p2_rate = rate_list[p2][-1]
+
+        #             w = p2_rate / p1_rate
+        #             w = 2 if w > 2 else w
+        #             w = 0.5 if w < 0.5 else w
+
+        #             new_p1_rate = p1_rate + int(30 * w)
+        #             new_p2_rate = p2_rate - int(30 * w)
+
+        #             if rank_list[p1][game_num] < rank_list[p2][game_num]:
+        #                 new_p1_rate = p1_rate - int(30 * w)
+        #                 new_p2_rate = p2_rate + int(30 * w)
+
+        #             rate_list[p1].append(new_p1_rate)
+        #             rate_list[p2].append(new_p2_rate)
 
         # print(rate_list)
-        return rate_list
+        # return rate_list
+        return
 
 
 class Settings(View):
